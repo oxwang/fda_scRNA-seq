@@ -1,0 +1,35 @@
+
+## scanorama ##
+## process gene counts matrix to npz data ##
+
+## HCC1395 ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/hcc1395.txt
+python3 bin/hcc1395.py
+
+
+## HCC1395BL ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/hcc1395bl.txt
+python3 bin/hcc1395bl.py
+
+
+## Mix ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/mix.txt
+python3 bin/mix.py
+
+
+
+
+
+
+
+
+
+
+
+
