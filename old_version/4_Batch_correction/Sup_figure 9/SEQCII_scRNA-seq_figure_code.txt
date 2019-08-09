@@ -1,0 +1,63 @@
+1)
+## feature plot
+## ensembl gene list for cd40, cd44, HER2,her1, ESR1,myc,ERK,ARK
+features.plot <- c("ENSG00000101017","ENSG00000026508","ENSG00000141736","ENSG00000146648","ENSG00000091831","ENSG00000136997","ENSG00000100030","ENSG00000142208") 
+# Cells_all_pooled:seurat object which has all data of 20 data sets
+# make feature plot
+FeaturePlot(object = Cells_all_pooled, features.plot = features.plot, cols.use = c("lightgrey",  "blue"),min.cutoff = 0, max.cutoff = 3,no.legend =F)
+*************
+2)
+## dotplot
+markers.to.plot <- c("ENSG00000137801","ENSG00000151632","ENSG00000182492","ENSG00000205426","ENSG00000120708","ENSG00000142192","ENSG00000176046","ENSG00000160886","ENSG00000169908","ENSG00000135919", "ENSG00000156738","ENSG00000211899","ENSG00000126353","ENSG00000137265","ENSG00000130592",
+"ENSG00000101017", "ENSG00000105369","ENSG00000143119","ENSG00000211677","ENSG00000277632");
+#gene_all <- row.names(Cells_all_pooled@data);
+#markers.to.plot2 <-markers.to.plot[markers.to.plot %in% gene_all];
+# Cells_all_pooled:seurat object which has all data of 20 data sets
+#"CellType": normal and Cancer; "markers.to.plo": gene list used for function
+SplitDotPlotGG(Cells_all_pooled, genes.plot = markers.to.plot, cols.use = c("blue", "red"), x.lab.rot = T, plot.legend = T, dot.scale = 8, do.return = F, grouping.var = "CellType")
+
+3)
+## scanorama Shell script
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import anndata
+import os
+import subprocess
+import bbknn
+import scipy as sp
+import matplotlib.pyplot as plt
+import glob
+import scanorama
+from MulticoreTSNE import MulticoreTSNE as TSNE
+....
+## make UMAP
+sc.tl.umap(adata)
+sc.pl.umap(adata,color='sample',size=5,legend_fontsize=4, save="Fig_FDA_LLU_20_samples_sacanorama_UMAP_20190218_HVG_1")
+# make tSNE
+sc.tl.tsne(adata,n_pcs=60)
+sc.pl.tsne(adata,color='sample', size=9,legend_fontsize=7,save="Fig_FDA_LLU_20_samples_sacanorama_tSNE_20190218_HVG") 
+
+4)
+##BBKNN: Shell script
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import anndata
+import os
+import subprocess
+import bbknn
+import scipy as sp
+import matplotlib.pyplot as plt
+import glob
+from MulticoreTSNE import MulticoreTSNE as TSNE
+....
+
+num_pcs=30
+adata_bbknn = bbknn.bbknn(adata_new, neighbors_within_batch=4, n_pcs=num_pcs, trim=50, save_knn=True, copy=True)
+sc.tl.tsne(adata_bbknn)
+sc.pl.tsne(adata_bbknn,color='sample', save="Fig_FDA_LLU_20samples_bbknn_tSNE_20190219_hvg1126") 
+sc.tl.umap(adata_bbknn)
+sc.pl.umap(adata_bbknn,color='sample',size=5,legend_fontsize=4, save="Fig_FDA_LLU_20samples_bbknn_UMAP_Hvg1126_20190219_1")
+
+

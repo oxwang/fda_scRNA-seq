@@ -1,0 +1,3 @@
+bbknn_correct.py --min_cells 3 --min_genes 200 --pcs 31 --hvgs 1000 --output biodtfs/user/vchen/bbknn_test/No_spikein/31pcs biodtfs/user/vchen/bbknn_test/No_spikein/input.txt
+
+scanorama_correct.py --min_cells 3 --min_genes 200 --pcs 23 --scanpy_hvgs 0 --scanorama_hvgs 1000 --tsne --output biodtfs/user/vchen/scanorama_test/A_spikein/23pcs biodtfs/user/vchen/scanorama_test/A_spikein/test_input.txt

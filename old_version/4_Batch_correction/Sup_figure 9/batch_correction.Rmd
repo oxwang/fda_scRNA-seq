@@ -1,0 +1,573 @@
+## "copyright"
+## this code is developed by Xiaojiang xu in NIEHS, NIH ,2018-
+## if you need copy of it, please contact with Xiaojiang xu; email: xuxiao@niehs.nih.gov;
+
+## SEQCII FDA/LLU scRNA-Seq  data: pool all 20 data sets
+library(Seurat) ## version 2.3.4
+library(plyr)
+library(dplyr)
+library(Matrix)
+library(pheatmap)
+library(plotly)
+library(reshape2)
+library(scran)  ## 1.8.4   
+library(scater)
+library(limma) ## limma_3.36.5  
+library(sva) ## sva_3.28.0, for ComBat
+#harmony_0.0.0.9000 
+
+setwd("/Volumes/Macintosh HD 2/Work/scRNAseq/MEQC2/LLUSingleCell2/scRNA-seq/FullData");
+
+######################
+#1. load all data and pool them together
+######################
+# load NCI_HT_C1 data
+load(file= "/home/xuxiao/Work/scRNA-Seq/SEQCII/scRNA-seq/data/C1_FDA_HT/FDA_NCI_HT_C1_scRNA_raw.Rdata")# Cells
+Cells_NCI <-Cells;
+rm(Cells)
+# load LLU_C1 data
+load(file= "/home/xuxiao/Work/scRNA-Seq/SEQCII/scRNA-seq/data/C1_LLU/FDA_LLU_C1_scRNA_raw.Rdata")# Cells
+Cells_C1 <- MergeSeurat(object1=Cells_NCI,object2= Cells,add.cell.id1 = Cells_NCI@ident, add.cell.id2 = Cells@ident,  do.normalize = F);
+
+rm(Cells,Cells_NCI)
+## load waferGene
+load(file= "/home/xuxiao/Work/scRNA-Seq/SEQCII/scRNA-seq/data/WaferGen/FDA_WaferGen_scRNA_raw.Rdata")# Cells
+Cells_Fulldata <- MergeSeurat(object1=Cells_C1, object2= Cells,  do.normalize = F);
+rm(Cells,Cells_C1)
+# load LLU 10x genomics data
+load(file= "/home/xuxiao/Work/scRNA-Seq/SEQCII/scRNA-seq/data/10x_LLU/FDA_LLU_scRNA_filter.Rdata") # 
+Cells_A_pooled_sub <- SubsetData(Cells, subset.name = NULL, accept.low = 0, subset.raw=T, max.cells.per.ident = 1200)
+
+Cells_Fulldata <- MergeSeurat(object1=Cells_Fulldata,object2= Cells_A_pooled_sub,  do.normalize = F);
+
+rm(Cells,Cells_A_pooled_sub)
+#load FDA/NCI 10x genomics data
+load(file= "/home/xuxiao/Work/scRNA-Seq/SEQCII/scRNA-seq/data/10x_NCI/FDA_NCI_scRNA_filter.Rdata") # 
+Cells_A_pooled_sub <- SubsetData(Cells, subset.name = NULL, accept.low = 0, subset.raw=T, max.cells.per.ident = 1200)
+Cells_Fulldata <- MergeSeurat(object1=Cells_Fulldata,object2= Cells_A_pooled_sub, add.cell.id1 = "10x", add.cell.id2 = "NCI", do.normalize = F);
+#add.cell.id1 = Cells_Fulldata@ident, add.cell.id2 = Cells@ident,
+rm(Cells,Cells_A_pooled_sub)
+
+Cells_Fulldata@meta.data$Sample <- factor(Cells_Fulldata@meta.data$Sample);
+Cells_Fulldata<-SetAllIdent(Cells_Fulldata,"Sample");
+table(Cells_Fulldata@ident)
+
+old_sample_name <-levels(Cells_Fulldata@meta.data$Sample)
+new_sample_name <-c("C1_FDA_HT_A", "C1_LLU_A", "10X_LLU_A", "10X_NCI_M_A", 
+                    "10X_NCI_A", "C1_FDA_HT_B", "C1_LLU_B", "10X_LLU_B",
+                    "10X_NCI_M_B","10X_NCI_B", "10X_LLU_10%A Spike-in", "10X_NCI_M_5%A Spike-in Fixed1", 
+          "10X_NCI_5%A Spike-in Fixed1", "10X_NCI_M_5%A Spike-in Fixed2","10X_NCI_M_5%A Spike-in", "10X_NCI_5%A Spike-in",
+          "WaferGene_PE_A", "WaferGene_SE_A" ,"WaferGene_PE_B","WaferGene_SE_B");
+
+for (i in 1:20) {
+    Cells_Fulldata <- RenameIdent(object = Cells_Fulldata, old.ident.name = old_sample_name[i], 
+        new.ident.name = new_sample_name[i])
+}
+Cells_Fulldata<-StashIdent(Cells_Fulldata, save.name = "SampleNew")
+
+table(Cells_Fulldata@ident);
+ 
+sample_name_order <-c( "10X_LLU_A", "10X_LLU_B", "10X_LLU_10%A Spike-in", "10X_NCI_A", "10X_NCI_B", "10X_NCI_5%A Spike-in","10X_NCI_5%A Spike-in Fixed1","10X_NCI_M_A","10X_NCI_M_B", "10X_NCI_M_5%A Spike-in","10X_NCI_M_5%A Spike-in Fixed1", "10X_NCI_M_5%A Spike-in Fixed2", "C1_FDA_HT_A",  "C1_FDA_HT_B","C1_LLU_A",   "C1_LLU_B", "WaferGene_PE_A" ,"WaferGene_PE_B","WaferGene_SE_A","WaferGene_SE_B" );
+Cells_Fulldata@meta.data$SampleNew<-factor(x = Cells_Fulldata@meta.data$SampleNew, levels = sample_name_order)
+Cells_Fulldata<-SetAllIdent(Cells_Fulldata,"SampleNew");
+table(Cells_Fulldata@ident);
+save(Cells_Fulldata,file= "FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_20180914_final.Rdata");
+
+######################
+#2. Data normalization and scaling
+######################
+rm(list=ls())
+load(file= "./Rdata/FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_20180914_final.Rdata")
+
+VlnPlot(Cells_Fulldata, features.plot=c("nGene"),group.by="SampleNew",x.lab.rot=T);
+# log transformation
+Cells_Fulldata<-NormalizeData(Cells_Fulldata);
+
+save(Cells_Fulldata, file= "./Rdata/FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_final_normalized_20180914.Rdata");
+######################
+# 3.make tSNE plot without any batch effect correction
+######################
+rm(list=ls())
+load(file= "./Rdata/FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_final_normalized_20180914.Rdata");
+Cells_Fulldata <- FindVariableGenes(Cells_Fulldata, mean.function = ExpMean, dispersion.function = LogVMR, 
+    x.low.cutoff = 0.1, x.high.cutoff = 8, y.cutoff = 0.8,do.plot = F )
+
+length(Cells_Fulldata@var.genes) ## 1178 hvg
+Cells_Fulldata<-ScaleData(Cells_Fulldata,model.use = 'negbinom',vars.to.regress = c("nUMI"),genes.use = Cells_Fulldata@var.genes,do.par =T,num.cores=10)
+
+Cells_Fulldata <- RunPCA(Cells_Fulldata, pc.genes = Cells_Fulldata@var.genes, do.print = FALSE, pcs.print = 5, genes.print = 5, pcs.compute = 100)
+Cells_Fulldata <- ProjectPCA(Cells_Fulldata,pcs.store = 100)#,replace.pc = T)
+
+PCAPlot(Cells_Fulldata, 1, 2,pt.size=2)
+Cells_Fulldata <- JackStraw(Cells_Fulldata, num.replicate = 100, num.pc = 100)
+JackStrawPlot(Cells_Fulldata, PCs = 1:100)
+
+Cells_Fulldata <- RunTSNE(Cells_Fulldata,dims.use = 1:100,perplexity=30); #dim.embed =3
+
+## make and save the plot
+#TSNEPlot(Cells_Fulldata,pt.size=2,colors.use =rainbow(20))
+sampleorder= levels(Cells_Fulldata@meta.data$SampleNew)[c(15,16,13,14,17:20,1:12)]
+i=20;
+samples_use = 1:i;
+Cells_Fulldata_A=SubsetData(Cells_Fulldata,subset.raw=T, ident.use= sampleorder[samples_use]);
+Cells_Fulldata_A@meta.data$SampleTemp<-factor(x = Cells_Fulldata_A@ident, levels = sampleorder[samples_use])
+pdf("./Figures//tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_limma_20samples_No_Correction.pdf",width=9) 
+par(mar=c(4.5,5,0.5,0.5))
+batch_cell <- table(Cells_Fulldata_A@meta.data$SampleTemp)
+plot(x=Cells_Fulldata_A@dr$tsne@cell.embeddings[,1], y=Cells_Fulldata_A@dr$tsne@cell.embeddings[,2], 
+      pch =19, col=rep(rainbow(20), batch_cell), xlab ="tSNE_1", ylab ="tSNE_2",  cex.axis=2, cex.lab=2,cex=0.5); #label.size=8,
+graphics.off();
+
+save(Cells_Fulldata,file= "FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_No_Correction.Rdata")
+
+######################
+# 4.use Limma to do batch effect correction
+######################
+rm(list=ls())
+require(limma)
+load(file= "./Rdata/FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_final_normalized_20180914.Rdata")
+
+Cells_correct <-removeBatchEffect(Cells_Fulldata@data,batch=Cells_Fulldata@meta.data$SampleNew);
+
+Cells_Fulldata@data <- Cells_correct;
+Cells_Fulldata <- FindVariableGenes(Cells_Fulldata, mean.function = ExpMean, dispersion.function = LogVMR, 
+    x.low.cutoff = 0.1, x.high.cutoff = 8, y.cutoff = 0.6,do.plot = F )
+
+length(Cells_Fulldata@var.genes) ## 1178 hvg
+Cells_Fulldata<-ScaleData(Cells_Fulldata,model.use = 'negbinom',vars.to.regress = c("nUMI"),genes.use = Cells_Fulldata@var.genes,do.par =T,num.cores=10)
+
+Cells_Fulldata <- RunPCA(Cells_Fulldata, pc.genes = Cells_Fulldata@var.genes, do.print = FALSE, pcs.print = 5, genes.print = 5, pcs.compute = 80)
+Cells_Fulldata <- ProjectPCA(Cells_Fulldata,pcs.store = 80)#,replace.pc = T)
+
+PCAPlot(Cells_Fulldata, 1, 2,pt.size=2)
+Cells_Fulldata <- JackStraw(Cells_Fulldata, num.replicate = 100, num.pc = 80)
+JackStrawPlot(Cells_Fulldata, PCs = 1:80)
+
+Cells_Fulldata <- RunTSNE(Cells_Fulldata,dims.use = 1:63,perplexity=30); #dim.embed =3
+save(Cells_Fulldata,file= "FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_limma_20181116.Rdata")
+  ## make figure
+
+sampleorder= levels(Cells_Fulldata@meta.data$SampleNew)[c(15,16,13,14,17:20,1:12)]
+i=20;
+samples_use = 1:i;
+Cells_Fulldata_A=SubsetData(Cells_Fulldata,subset.raw=T, ident.use= sampleorder[samples_use]);
+Cells_Fulldata_A@meta.data$SampleTemp<-factor(x = Cells_Fulldata_A@ident, levels = sampleorder[samples_use])
+pdf("./Figures/BatchEffect/Limma/tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_limma_20samples.pdf",width=9) 
+par(mar=c(4.5,5,0.5,0.5))
+batch_cell <- table(Cells_Fulldata_A@meta.data$SampleTemp)
+plot(x=Cells_Fulldata_A@dr$tsne@cell.embeddings[,1], y=Cells_Fulldata_A@dr$tsne@cell.embeddings[,2], 
+      pch =19, col=rep(rainbow(20), batch_cell), xlab ="tSNE_1", ylab ="tSNE_2",  cex.axis=2, cex.lab=2,cex=0.5); #label.size=8,
+graphics.off();
+
+######################
+# 5.use ComBat to do batch effect correction
+######################   
+require(sva)
+rm(list=ls())
+load(file= "./Rdata/FDA_LLU_NCI_10X_C1_WG_scRNA_filter_fulldata_10x_sub1200_final_normalized_20180914.Rdata")
+index_temp <-  which ((apply(as.matrix(Cells_Fulldata@data), 1, var)!=0) == "TRUE")
+
+Cells_correct <-ComBat(dat= as.matrix(Cells_Fulldata@data)[index_temp,], batch=Cells_Fulldata@meta.data$SampleNew,mod = NULL, par.prior = T);
+
+#Cells_correct <-ComBat(dat= as.matrix(Cells_Fulldata@data), mod = modcombat, batch=Cells_Fulldata@meta.data$SampleNew, par.prior = T);
+
+Cells_Fulldata@data <- Cells_correct;
+rm(Cells_correct)
+
+Cells_Fulldata <- FindVariableGenes(Cells_Fulldata, mean.function = ExpMean, dispersion.function = LogVMR, 
+    x.low.cutoff = 0.1, x.high.cutoff = 8, y.cutoff = 0.6,do.plot = F )
+
+length(Cells_Fulldata@var.genes) ## 1178 hvg
+Cells_Fulldata<-ScaleData(Cells_Fulldata,model.use = 'negbinom',vars.to.regress = c("nUMI"),genes.use = Cells_Fulldata@var.genes,do.par =T,num.cores=10)
+
+Cells_Fulldata <- RunPCA(Cells_Fulldata, pc.genes = Cells_Fulldata@var.genes, do.print = FALSE, pcs.print = 5, genes.print = 5, pcs.compute = 80)
+Cells_Fulldata <- ProjectPCA(Cells_Fulldata,pcs.store = 80)#,replace.pc = T)
+
+PCAPlot(Cells_Fulldata, 1, 2,pt.size=2)
+Cells_Fulldata <- JackStraw(Cells_Fulldata, num.replicate = 100, num.pc = 80)
+JackStrawPlot(Cells_Fulldata, PCs = 1:80)
+
+Cells_Fulldata <- RunTSNE(Cells_Fulldata,dims.use = 1:80,perplexity=30); #dim.embed =3
+
+#save(Cells_Fulldata,file= "FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_Combat_20181119.Rdata")
+
+levels(Cells_Fulldata@meta.data$SampleNew)
+i=20
+pdf("./Figures/BatchEffect/Combat/tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Combat_20samples.pdf",width=9) 
+par(mar=c(4.5,5,0.5,0.5))
+batch_cell <- table(Cells_Fulldata_A@meta.data$SampleTemp)
+plot(x=Cells_Fulldata_A@dr$tsne@cell.embeddings[,1], y=Cells_Fulldata_A@dr$tsne@cell.embeddings[,2], 
+      pch =19, col=rep(rainbow(20), batch_cell), xlab ="tSNE_1", ylab ="tSNE_2",  cex.axis=2, cex.lab=2,cex=0.5); #label.size=8,
+graphics.off();
+
+######################
+# 6 .use MNN to do batch effect correction
+######################
+rm(list=ls())
+library(scran)
+load(file= "./Rdata/FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_No_Correction.Rdata");
+
+correctSeq<-mnnCorrect(as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_M_5%A Spike-in")]),
+              as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_LLU_10%A Spike-in")]),
+              as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_M_5%A Spike-in Fixed1")]),
+              as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_M_5%A Spike-in Fixed2")]),
+              as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_5%A Spike-in")]), 
+              as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_5%A Spike-in Fixed1")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_M_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_LLU_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "WaferGene_PE_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "WaferGene_SE_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "C1_LLU_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "C1_FDA_HT_A")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_M_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_NCI_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "10X_LLU_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "WaferGene_PE_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "WaferGene_SE_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "C1_LLU_B")]),
+                        as.matrix(Cells_Fulldata@data[,WhichCells(Cells_Fulldata,ident = "C1_FDA_HT_B")]),
+                        cos.norm.in = T,cos.norm.out = F,subset.row= Cells_Fulldata@var.genes)
+
+#unique(Cells_Fulldata@meta.data$SampleNew);
+#unique(Cells_Fulldata@ident);
+Cells_Fulldata@data<-Matrix(cbind(correctSeq$corrected[[16]],
+                                  correctSeq$corrected[[11]],
+                                  correctSeq$corrected[[18]],
+                                  correctSeq$corrected[[20]],
+                                  correctSeq$corrected[[17]],
+                                  correctSeq$corrected[[19]],
+                                  correctSeq$corrected[[12]],
+                                  correctSeq$corrected[[13]],
+                                  correctSeq$corrected[[9]],
+                                  correctSeq$corrected[[5]],
+                                  correctSeq$corrected[[6]],
+                                  correctSeq$corrected[[3]],
+                                  correctSeq$corrected[[1]],
+                                  correctSeq$corrected[[14]],
+                                  correctSeq$corrected[[15]],
+                                  correctSeq$corrected[[10]],
+                                   correctSeq$corrected[[7]],
+                                  correctSeq$corrected[[8]],
+                                  correctSeq$corrected[[4]],
+                                  correctSeq$corrected[[2]]),
+                                  sparse = TRUE)
+ 
+table(Cells_Fulldata@ident)
+
+Cells_Fulldata<-ScaleData(Cells_Fulldata,model.use = 'negbinom',genes.use = rownames(Cells_Fulldata@data),do.center = T,do.scale = F,do.par=T,num.cores=15)
+
+Cells_Fulldata <- FindVariableGenes(Cells_Fulldata, mean.function = ExpMean, dispersion.function = LogVMR, 
+    x.low.cutoff = 0.1, x.high.cutoff = 8, y.cutoff = 0.8,do.plot = F )
+
+Cells_Fulldata <- RunPCA(Cells_Fulldata, pc.genes = Cells_Fulldata@var.genes, do.print = FALSE, pcs.print = 5, genes.print = 5, pcs.compute = 50)
+Cells_Fulldata <- ProjectPCA(Cells_Fulldata,pcs.store = 50)#,replace.pc = T)
+
+PCAPlot(Cells_Fulldata, 1, 2,pt.size=2)
+Cells_Fulldata <- JackStraw(Cells_Fulldata, num.replicate = 100, num.pc = 20)
+JackStrawPlot(Cells_Fulldata, PCs = 1:20)
+
+Cells_Fulldata <- RunTSNE(Cells_Fulldata,dims.use = c(1:5,9,10),seed=21); #dim.embed =3
+TSNEPlot(Cells_Fulldata,group.by="SampleNew",pt.size=1.5,colors.use =rainbow(20))
+save(Cells_Fulldata,file= "FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_MNN.Rdata")
+  ## make figures
+
+#levels(Cells_Fulldata@meta.data$SampleNew)
+sampleorder= levels(Cells_Fulldata@meta.data$SampleNew)[c(15,16,13,14,17:20,1:12)]
+for (i in 1:20) {
+  png(file=paste("./Figures/BatchEffect/MNN/tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_", i,"_MNN.png",sep=""),  width =1024, height = 1024); 
+  samples_use = 1:i;
+  Cells_Fulldata_A=SubsetData(Cells_Fulldata,subset.raw=T, ident.use= sampleorder[samples_use]);
+  Cells_Fulldata_A@meta.data$SampleTemp<-factor(x = Cells_Fulldata_A@ident, levels = sampleorder[samples_use])
+  TSNEPlot(Cells_Fulldata_A,group.by="SampleTemp",pt.size=1.5,colors.use =rainbow(20)[samples_use]);
+  graphics.off();
+}
+
+######################
+# 7 .use CCA to do batch effect correction
+######################
+#### remove batch effect CCA
+
+rm(list=ls())
+load(file= "./Rdata/FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_No_Correction.Rdata");
+
+levels(Cells_Fulldata@meta.data$SampleNew);
+sampleorder= levels(Cells_Fulldata@meta.data$SampleNew)[c(15,16,13,14,17:20,1:12)]
+#samplelist <-sampleorder;
+#1
+C1_LLU_A<-SubsetData(Cells_Fulldata,ident.use="C1_LLU_A",subset.raw=T,do.clean =T);
+C1_LLU_A@meta.data$Site ="C1_LLU_A"
+C1_LLU_A <-FindVariableGenes(C1_LLU_A, display.progress =F);
+C1_LLU_A<- ScaleData(C1_LLU_A, display.progress = F,do.par=T,num.cores=8)
+
+#2
+C1_LLU_B <-SubsetData(Cells_Fulldata,ident.use="C1_LLU_B",subset.raw=T,do.clean =T);
+C1_LLU_B@meta.data$Site ="C1_LLU_B"
+C1_LLU_B <-FindVariableGenes(C1_LLU_B, display.progress =F);
+C1_LLU_B<- ScaleData(C1_LLU_B, display.progress = F,do.par=T,num.cores=8)
+
+#3
+C1_FDA_HT_A <-SubsetData(Cells_Fulldata,ident.use="C1_FDA_HT_A",subset.raw=T,do.clean =T);
+C1_FDA_HT_A@meta.data$Site ="C1_FDA_HT_A"
+C1_FDA_HT_A <-FindVariableGenes(C1_FDA_HT_A, display.progress =F);
+C1_FDA_HT_A<- ScaleData(C1_FDA_HT_A, display.progress = F,do.par=T,num.cores=8)
+
+#4
+C1_FDA_HT_B <-SubsetData(Cells_Fulldata,ident.use="C1_FDA_HT_B",subset.raw=T,do.clean =T);
+C1_FDA_HT_B@meta.data$Site ="C1_FDA_HT_B"
+C1_FDA_HT_B <-FindVariableGenes(C1_FDA_HT_B, display.progress =F);
+C1_FDA_HT_B<- ScaleData(C1_FDA_HT_B, display.progress = F,do.par=T,num.cores=8)
+
+#5
+WaferGene_PE_A <-SubsetData(Cells_Fulldata,ident.use="WaferGene_PE_A",subset.raw=T,do.clean =T);
+WaferGene_PE_A@meta.data$Site ="WaferGene_PE_A"
+WaferGene_PE_A <-FindVariableGenes(WaferGene_PE_A, display.progress =F);
+WaferGene_PE_A<- ScaleData(WaferGene_PE_A, display.progress = F,do.par=T,num.cores=8)
+
+#6
+WaferGene_PE_B <-SubsetData(Cells_Fulldata,ident.use="WaferGene_PE_B",subset.raw=T,do.clean =T);
+WaferGene_PE_B@meta.data$Site ="WaferGene_PE_B"
+WaferGene_PE_B <-FindVariableGenes(WaferGene_PE_B, display.progress =F);
+WaferGene_PE_B<- ScaleData(WaferGene_PE_B, display.progress = F,do.par=T,num.cores=8)
+
+#7
+WaferGene_SE_A <-SubsetData(Cells_Fulldata,ident.use="WaferGene_SE_A",subset.raw=T,do.clean =T);
+WaferGene_SE_A@meta.data$Site ="WaferGene_SE_A"
+WaferGene_SE_A <-FindVariableGenes(WaferGene_SE_A, display.progress =F);
+WaferGene_SE_A<- ScaleData(WaferGene_SE_A, display.progress = F,do.par=T,num.cores=8)
+
+
+#8
+WaferGene_SE_B <-SubsetData(Cells_Fulldata,ident.use="WaferGene_SE_B",subset.raw=T,do.clean =T);
+WaferGene_SE_B@meta.data$Site ="WaferGene_SE_B"
+WaferGene_SE_B <-FindVariableGenes(WaferGene_SE_B, display.progress =F);
+WaferGene_SE_B<- ScaleData(WaferGene_SE_B, display.progress = F,do.par=T,num.cores=8)
+
+#9
+LLU_10X_A <-SubsetData(Cells_Fulldata,ident.use="10X_LLU_A",subset.raw=T,do.clean =T);
+LLU_10X_A@meta.data$Site ="10X_LLU_A"
+LLU_10X_A <-FindVariableGenes(LLU_10X_A, display.progress =F);
+LLU_10X_A<- ScaleData(LLU_10X_A, display.progress = F,do.par=T,num.cores=8)
+
+
+#10
+LLU_10X_B <-SubsetData(Cells_Fulldata,ident.use="10X_LLU_B",subset.raw=T,do.clean =T);
+LLU_10X_B@meta.data$Site ="10X_LLU_B"
+LLU_10X_B <-FindVariableGenes(LLU_10X_B, display.progress =F);
+LLU_10X_B<- ScaleData(LLU_10X_B, display.progress = F,do.par=T,num.cores=8)
+
+#11
+LLU_10X_10pA_Spike.in <-SubsetData(Cells_Fulldata,ident.use="10X_LLU_10%A Spike-in",subset.raw=T,do.clean =T);
+LLU_10X_10pA_Spike.in@meta.data$Site ="10X_LLU_10%A Spike-in"
+LLU_10X_10pA_Spike.in <-FindVariableGenes(LLU_10X_10pA_Spike.in, display.progress =F);
+LLU_10X_10pA_Spike.in<- ScaleData(LLU_10X_10pA_Spike.in, display.progress = F,do.par=T,num.cores=8)
+
+#12
+NCI_10X_A <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_A",subset.raw=T,do.clean =T);
+NCI_10X_A@meta.data$Site ="10X_NCI_A"
+NCI_10X_A <-FindVariableGenes(NCI_10X_A, display.progress =F);
+NCI_10X_A<- ScaleData(NCI_10X_A, display.progress = F,do.par=T,num.cores=8)
+
+
+#13
+NCI_10X_B <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_B",subset.raw=T,do.clean =T);
+NCI_10X_B@meta.data$Site ="10X_NCI_B"
+NCI_10X_B <-FindVariableGenes(NCI_10X_B, display.progress =F);
+NCI_10X_B<- ScaleData(NCI_10X_B, display.progress = F,do.par=T,num.cores=8)
+
+#14
+NCI_10X_5pA_Spike.in <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_5%A Spike-in",subset.raw=T,do.clean =T);
+NCI_10X_5pA_Spike.in@meta.data$Site ="10X_NCI_5%A Spike-in"
+NCI_10X_5pA_Spike.in <-FindVariableGenes(NCI_10X_5pA_Spike.in, display.progress =F);
+NCI_10X_5pA_Spike.in<- ScaleData(NCI_10X_5pA_Spike.in, display.progress = F,do.par=T,num.cores=8)
+
+#15
+NCI_10X_5pA_Spike.in_Fixed1 <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_5%A Spike-in Fixed1",subset.raw=T,do.clean =T);
+NCI_10X_5pA_Spike.in_Fixed1@meta.data$Site ="10X_NCI_5%A Spike-in Fixed1"
+NCI_10X_5pA_Spike.in_Fixed1 <-FindVariableGenes(NCI_10X_5pA_Spike.in_Fixed1, display.progress =F);
+NCI_10X_5pA_Spike.in_Fixed1<- ScaleData(NCI_10X_5pA_Spike.in_Fixed1, display.progress = F,do.par=T,num.cores=8)
+
+#16
+NCI_10X_M_A <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_M_A",subset.raw=T,do.clean =T);
+NCI_10X_M_A@meta.data$Site ="10X_NCI_M_A"
+NCI_10X_M_A <-FindVariableGenes(NCI_10X_M_A, display.progress =F);
+NCI_10X_M_A<- ScaleData(NCI_10X_M_A, display.progress = F,do.par=T,num.cores=8)
+
+
+#17
+NCI_10X_M_B <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_M_B",subset.raw=T,do.clean =T);
+NCI_10X_M_B@meta.data$Site ="10X_NCI_M_B"
+NCI_10X_M_B <-FindVariableGenes(NCI_10X_M_B, display.progress =F);
+NCI_10X_M_B<- ScaleData(NCI_10X_M_B, display.progress = F,do.par=T,num.cores=8)
+
+
+#18
+NCI_10X_M_5pA_Spike.in <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_M_5%A Spike-in",subset.raw=T,do.clean =T);
+NCI_10X_M_5pA_Spike.in@meta.data$Site ="10X_NCI_M_5%A Spike-in"
+NCI_10X_M_5pA_Spike.in <-FindVariableGenes(NCI_10X_M_5pA_Spike.in, display.progress =F);
+NCI_10X_M_5pA_Spike.in<- ScaleData(NCI_10X_M_5pA_Spike.in, display.progress = F,do.par=T,num.cores=8)
+
+#19
+NCI_10X_M_5pA_Spike.in_Fixed1 <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_M_5%A Spike-in Fixed1",subset.raw=T,do.clean =T);
+NCI_10X_M_5pA_Spike.in_Fixed1@meta.data$Site ="10X_NCI_M_5%A Spike-in Fixed1"
+NCI_10X_M_5pA_Spike.in_Fixed1 <-FindVariableGenes(NCI_10X_M_5pA_Spike.in_Fixed1, display.progress =F);
+NCI_10X_M_5pA_Spike.in_Fixed1<- ScaleData(NCI_10X_M_5pA_Spike.in_Fixed1, display.progress = F,do.par=T,num.cores=8)
+
+#20
+NCI_10X_M_5pA_Spike.in_Fixed2 <-SubsetData(Cells_Fulldata,ident.use="10X_NCI_M_5%A Spike-in Fixed2",subset.raw=T,do.clean =T);
+NCI_10X_M_5pA_Spike.in_Fixed2@meta.data$Site ="10X_NCI_M_5%A Spike-in Fixed2"
+NCI_10X_M_5pA_Spike.in_Fixed2 <-FindVariableGenes(NCI_10X_M_5pA_Spike.in_Fixed2, display.progress =F);
+NCI_10X_M_5pA_Spike.in_Fixed2<- ScaleData(NCI_10X_M_5pA_Spike.in_Fixed2, display.progress = F,do.par=T,num.cores=8)
+
+ob.list <- list( C1_LLU_A, C1_LLU_B, C1_FDA_HT_A, C1_FDA_HT_B, WaferGene_PE_A, WaferGene_PE_B, WaferGene_SE_A,WaferGene_SE_B, LLU_10X_A,
+                 LLU_10X_B, LLU_10X_10pA_Spike.in, NCI_10X_A, NCI_10X_B, NCI_10X_5pA_Spike.in, NCI_10X_5pA_Spike.in_Fixed1, NCI_10X_M_A, NCI_10X_M_B,
+                 NCI_10X_M_5pA_Spike.in, NCI_10X_M_5pA_Spike.in_Fixed1, NCI_10X_M_5pA_Spike.in_Fixed2);
+save(ob.list, file= "FDA_LLU_NCI_scRNA_10x_AB_spinkin_fulldata_sub1200_Normalized_ob.list_20181013.Rdata");
+
+genes.use <- c()
+for (i in 1:length(ob.list)) {
+  genes.use <- c(genes.use, head(rownames(ob.list[[i]]@hvg.info), 500))
+}
+genes.use <- names(which(table(genes.use) > 1))
+for (i in 1:length(ob.list)) {
+  genes.use <- genes.use[genes.use %in% rownames(ob.list[[i]]@scale.data)]
+}
+
+Cells_Fulldata_CCA <- RunMultiCCA(ob.list, genes.use =  genes.use, num.cc = 30) ;
+
+#save(Cells_Fulldata_CCA,file= "FDA_LLU_NCI_scRNA_10x_AB_spinkin_fulldata_sub1200_Normalized_CCA_20181013.Rdata");
+#rm(Cells_Fulldata)
+
+MetageneBicorPlot(Cells_Fulldata_CCA, grouping.var = "site", dims.eval = 1:30);
+# Run rare non-overlapping filtering
+Cells_Fulldata_CCA <- CalcVarExpRatio(object = Cells_Fulldata_CCA, reduction.type = "pca",
+                                  grouping.var = "Site", dims.use = 1:30)
+Cells_Fulldata_CCA <- SubsetData(Cells_Fulldata_CCA, subset.name = "var.ratio.pca",
+                             accept.low = 0.5)
+
+
+# Variable gene done
+Cells_Fulldata_CCA <- FindVariableGenes(Cells_Fulldata_CCA, mean.function = ExpMean, dispersion.function = LogVMR, do.plot =F,
+                                    x.low.cutoff = 0.1, x.high.cutoff = 8, y.cutoff = 0.8 )
+
+
+
+p1 <- DimPlot(object = Cells_Fulldata_CCA, reduction.use = "cca", group.by = "Site", 
+              pt.size = 0.5, do.return = TRUE)
+p2 <- VlnPlot(object = Cells_Fulldata_CCA, features.plot = "CC1", group.by = "Site", 
+              do.return = TRUE)
+plot_grid(p1, p2)
+
+DimHeatmap(object = Cells_Fulldata_CCA, reduction.type = "cca", cells.use = 500, dim.use = 16:30, 
+           do.balanced = TRUE)
+
+Cells_Fulldata_CCA <- AlignSubspace(Cells_Fulldata_CCA, reduction.type = "cca", grouping.var = "Site", 
+                                dims.align = 1:30)
+Cells_Fulldata_CCA <- RunTSNE(Cells_Fulldata_CCA, reduction.use = "cca.aligned", dims.use = 1:30, 
+                          do.fast = T)
+
+TSNEPlot(Cells_Fulldata_CCA,group.by="Site",pt.size=1.5)
+Cells_Fulldata_CCA<-SetAllIdent(object = Cells_Fulldata_CCA, id = "SampleNew");
+
+  ## make figures
+levels(Cells_Fulldata_CCA@meta.data$SampleNew)
+sampleorder= levels(Cells_Fulldata_CCA@meta.data$SampleNew)[c(15,16,13,14,17:20,1:12)]
+for (i in 1:20) {
+  tiff(file=paste("./Figures/BatchEffect/CCA/tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_tSNE_CCA", i,"_ordered.tiff",sep=""),  width =1024, height = 1024,res=150); 
+  samples_use = 1:i;
+  Cells_Fulldata_A=SubsetData(Cells_Fulldata_CCA,subset.raw=T, ident.use= sampleorder[samples_use]);
+  Cells_Fulldata_A@meta.data$SampleTemp<-factor(x = Cells_Fulldata_A@ident, levels = sampleorder[samples_use])
+  #Cells_Fulldata<-SetAllIdent(Cells_Fulldata,"SampleNew");
+  TSNEPlot(Cells_Fulldata_A,group.by="SampleTemp",pt.size=1.5,colors.use =rainbow(20)[samples_use],no.legend =T);
+  graphics.off();
+}
+
+
+######################
+# 8 .use Harmony to do batch effect correction
+######################
+library(harmony)
+
+rm(list=ls())
+load(file= "./Rdata/FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_No_Correction.Rdata");
+ table(Cells_Fulldata@ident)
+
+system.time(Cells_Fulldata <- RunHarmony(Cells_Fulldata,group.by="SampleNew", theta = 2, plot_convergence = TRUE, nclust = 80, max.iter.cluster = 200))
+options(repr.plot.height = 6, repr.plot.width = 12)
+p1 <- DimPlot(object = Cells_Fulldata, reduction.use = "harmony", pt.size = .1, group.by = "SampleNew", do.return = T);
+
+DimHeatmap(object = Cells_Fulldata, reduction.type = "harmony", cells.use = 2000, dim.use = 1:25, do.balanced = TRUE)
+Cells_Fulldata <- RunTSNE(Cells_Fulldata, reduction.use = "harmony", dims.use = 1:15, seed.use =21)
+TSNEPlot(Cells_Fulldata,  pt.size = 1, group.by = "SampleNew", colors.use=rainbow(20));
+
+#save(Cells_Fulldata,file= "FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Normalized_tSNE_harmony_20190107.Rdata")
+i=20
+pdf("./Figures/BatchEffect/Combat/tSNE_FDA_LLU_NCI_scRNA_Fulldata_10xsub1200_Combat_20samples_3.pdf",width=9) 
+par(mar=c(4.5,5,0.5,0.5))
+batch_cell <- table(Cells_Fulldata_A@meta.data$SampleTemp)
+plot(x=Cells_Fulldata_A@dr$tsne@cell.embeddings[,1], y=Cells_Fulldata_A@dr$tsne@cell.embeddings[,2], 
+      pch =19, col=rep(rainbow(20), batch_cell), xlab ="tSNE_1", ylab ="tSNE_2",  cex.axis=2, cex.lab=2,cex=0.5); #label.size=8,
+graphics.off();
+
+
+####################
+# 9. use scanorama to do batch effect correction
+####################
+
+## scanorama Shell script
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import anndata
+import os
+import subprocess
+import bbknn
+import scipy as sp
+import matplotlib.pyplot as plt
+import glob
+import scanorama
+from MulticoreTSNE import MulticoreTSNE as TSNE
+....
+## make UMAP
+sc.tl.umap(adata)
+sc.pl.umap(adata,color='sample',size=5,legend_fontsize=4, save="Fig_FDA_LLU_20_samples_sacanorama_UMAP_20190218_HVG_1")
+# make tSNE
+sc.tl.tsne(adata,n_pcs=60)
+sc.pl.tsne(adata,color='sample', size=9,legend_fontsize=7,save="Fig_FDA_LLU_20_samples_sacanorama_tSNE_20190218_HVG") 
+
+
+
+#######################
+## 10. use bbknn to do batch effect correction
+#######################
+
+##BBKNN: Shell script
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import anndata
+import os
+import subprocess
+import bbknn
+import scipy as sp
+import matplotlib.pyplot as plt
+import glob
+from MulticoreTSNE import MulticoreTSNE as TSNE
+....
+
+num_pcs=30
+adata_bbknn = bbknn.bbknn(adata_new, neighbors_within_batch=4, n_pcs=num_pcs, trim=50, save_knn=True, copy=True)
+sc.tl.tsne(adata_bbknn)
+sc.pl.tsne(adata_bbknn,color='sample', save="Fig_FDA_LLU_20samples_bbknn_tSNE_20190219_hvg1126") 
+sc.tl.umap(adata_bbknn)
+sc.pl.umap(adata_bbknn,color='sample',size=5,legend_fontsize=4, save="Fig_FDA_LLU_20samples_bbknn_UMAP_Hvg1126_20190219_1")
+
+
+
+
+
+
+
+
+
+
