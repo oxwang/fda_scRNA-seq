@@ -75,7 +75,7 @@ for(i in 1:length(counts))
 	meta_da <- data.frame(matrix(batch[i],nrow=ncol(counts[[i]]),ncol=1))
 	rownames(meta_da) <- colnames(counts[[i]])
 	colnames(meta_da) <- 'batch'
-	tmpCells <- CreateSeuratObject(counts[[i]],min.cells = 3,min.features = 200, meta.data=meta_da)
+	tmpCells <- CreateSeuratObject(counts[[i]],min.cells = 3,min.features = 500, meta.data=meta_da)
 	Total_mRNAs <- tmpCells[["nCount_RNA"]]$nCount_RNA
 	mupper_bound <- 10^(mean(log10(Total_mRNAs)) + 2*sd(log10(Total_mRNAs)))
 	mlower_bound <- 10^(mean(log10(Total_mRNAs)) - 2*sd(log10(Total_mRNAs)))
