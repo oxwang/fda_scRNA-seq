@@ -1,4 +1,0 @@
-﻿data/Mix/10x_Mix10_LLU
-data/Mix/10x_Mix5_NCI
-data/Mix/10x_Mix5_F_NCI
-data/Mix/10x_Mix5_F2_NCI

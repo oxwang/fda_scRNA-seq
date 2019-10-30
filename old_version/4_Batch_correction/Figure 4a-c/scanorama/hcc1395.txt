@@ -1,5 +1,0 @@
-﻿data/HCC1395/C1_FDA
-data/HCC1395/10x_LLU
-data/HCC1395/10x_NCI
-data/HCC1395/C1_LLU
-data/HCC1395/WaferGen
