@@ -3,8 +3,8 @@
 ## boxplot of number of expressed genes per cell, and
 ## violin plot of gene expression corrleation and IoU
 
-input <- '../manuscript_code/1_Preprocessing/Pipeline_comp/Data/'
-output <- '../manuscript_code/1_Preprocessing/Pipeline_comp/Data/'
+input <- '/.../2_Pipeline_comp/Data/'
+output <- '/.../2_Pipeline_comp/Results/'
 
 ## 10x, figure 2a-c ##
 
@@ -145,11 +145,11 @@ dev.off()
 filepath <- vector("list",4)
 
 filepath[[1]] <- paste0(input,"/C1/")
-filepath[[2]] <- paste0(input,"/C1_fda/")
-filepath[[3]] <- paste0(input,"/WaferGen/PE/")
-filepath[[4]] <- paste0(input,"/WaferGen/SE/")
+filepath[[2]] <- paste0(input,"/C1_HT/")
+filepath[[3]] <- paste0(input,"/iCELL8/PE/")
+filepath[[4]] <- paste0(input,"/iCELL8/SE/")
 
-seq_type <- c("C1_LLU","C1_FDA_HT","WaferGen_PE","WaferGen_SE")
+seq_type <- c("C1_LLU","C1_FDA_HT","iCELL8_PE","iCELL8_SE")
 samples <- c("HCC1395","HCC1395BL")
 samples2 <- c("A","B")
 

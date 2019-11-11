@@ -1,0 +1,36 @@
+## scanorama ##
+## process gene counts matrix to npz data ##
+
+## scenario 1 ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/all.txt
+python3 bin/all.py
+
+
+## scenario 2 ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/hcc1395.txt
+python3 bin/hcc1395.py
+
+
+## scenario 3 ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/hcc1395bl.txt
+python3 bin/hcc1395bl.py
+
+
+## scenario 4 ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/mix.txt
+python3 bin/mix.py
+
+
+## Tian ##
+
+cd /home/genomics/bioinformatics/app/scanorama/1.4
+python3 bin/process.py conf/tian.txt
+python3 bin/tian.py

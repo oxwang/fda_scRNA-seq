@@ -1,0 +1,4 @@
+﻿data/Tian/sc_10x_3cl
+data/Tian/sc_10x_5cl
+data/Tian/sc_CEL-seq2
+data/Tian/sc_Drop-seq
